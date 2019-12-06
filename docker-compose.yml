@@ -1,0 +1,83 @@
+version: '2.4'
+services:
+ # Data Container
+ data-storage:
+  image: busybox
+  volumes:
+   - /shared-storage
+  networks: 
+   dev:
+ # NodeJS
+ node-dev:
+  build: ./node-app
+  image: node-test-app
+  ports:
+   - ${node_dev_port}:8081
+  volumes_from:
+   - container:data-storage
+  volumes:
+   - ./public_html:/app 
+  depends_on:
+   mysql-dev:
+    condition: service_healthy
+  restart: ${restart_dev_policy}
+  networks: 
+   dev:
+ # Engine X
+ nginx-dev:
+  image: nginx:alpine
+  ports: 
+   - ${nginx_dev_port}:80
+   - ${secure_nginx_dev_port}:443
+  volumes_from:
+   - container:data-storage
+  volumes:
+   - ./public_html:/public_html
+   - ./conf.d:/etc/nginx/conf.d
+   - ./public_html/ssl:/etc/nginx/ssl
+  depends_on:
+   - node-dev
+  restart: ${restart_dev_policy}
+  networks: 
+   dev:
+ # PHP FPM
+ php_fpm: 
+  image: php:7.2.25-fpm-alpine
+  expose:
+   - 9000
+  volumes_from:
+   - container:data-storage
+  volumes:
+   - ./php-fpm.d:/usr/local/etc/php-fpm.d
+  depends_on:
+   - nginx-dev
+  restart: ${restart_dev_policy}
+  networks: 
+   dev:
+ # MYSQL
+ mysql-dev:
+  image: mysql
+  environment:
+   MYSQL_ROOT_PASSWORD: ${mysql_dev_pass}
+   MYSQL_DATABASE: ${mysql_dev_db}
+  ports:
+   - "3308:3306"
+  healthcheck:
+   test: "/usr/bin/mysql --user=root --password=${mysql_dev_pass} --execute \"SHOW DATABASES;\""
+   interval: 2s
+   timeout: 20s
+   retries: 10
+  depends_on:
+   - data-storage
+  restart: ${restart_dev_policy}
+  networks: 
+   dev:
+           # Saving db-data
+  volumes:
+   - data-persistent:/var/lib/mysql
+  networks: 
+   dev:
+volumes:
+ data-persistent:
+networks: 
+ dev:
